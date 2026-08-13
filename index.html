@@ -261,10 +261,10 @@
             document.getElementById("result-section").style.display = "block";
             renderRadarChart(finalScores);
 
-            // 3. 呼叫 Python 後端 API (http://127.0.0.1:8000/api/analyze)
+            // 3. 呼叫 Python 後端 API (https://abc123-1jyf.onrender.com/api/analyze)
             document.getElementById("aiComment").innerHTML = "⌛ AI 導師正在為您進行五維度深度分析與報告寄送，請稍候...";
 
-            fetch("http://127.0.0.1:8000/api/analyze", {
+            fetch("https://abc123-1jyf.onrender.com/api/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
