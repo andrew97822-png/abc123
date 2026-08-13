@@ -74,7 +74,7 @@ async def analyze_quiz(data: QuizRequest):
         if resend_key:
             resend.api_key = resend_key
             resend.Emails.send({
-                "from": "Ness Wellness <onboarding@resend.dev>",
+                "from": "123 <onboarding@resend.dev>",
                 "to": data.email,
                 "subject": f"🌿 {data.name} 的身心靈深度檢測報告",
                 "html": f"<div style='font-family: sans-serif; line-height: 1.6;'><h3>親愛的 {data.name} 您好：</h3><p>感謝參與檢測！以下是您的個人化身心靈分析報告：</p><hr><pre style='white-space: pre-wrap;'>{ai_comment}</pre></div>"
