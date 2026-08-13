@@ -36,7 +36,7 @@ async def analyze_quiz(data: QuizRequest):
 
         # 1. 組合 Prompt 給 Claude
         prompt = f"""
-        你是一位 Ness Wellness 的專業身心靈導師。請根據使用者的五維度得分（滿分 10 分）進行深度的分析與引導。
+        你是一位資深的專業身心靈導師。請根據使用者的五維度得分（滿分 10 分）進行深度的分析與引導。
 
         使用者姓名：{data.name}
         得分狀況：
@@ -52,7 +52,7 @@ async def analyze_quiz(data: QuizRequest):
         3. 【情緒覺察與調節】：分析其狀況並給予情緒安撫建議。
         4. 【心智專注與清晰度】：分析其狀況並給予專注力建議。
         5. 【內在連結與靈性】：分析其狀況並給予內在練習建議。
-        6. 【🌿 Ness Wellness 總結與專屬建議】：給予整體鼓勵與適合他的身心靈練習（如頌缽、冥想或呼吸法）。
+        6. 【總結與專屬建議】：給予整體鼓勵與適合他的身心靈練習（如頌缽、冥想或呼吸法）。
         """
 
         response = client.messages.create(
