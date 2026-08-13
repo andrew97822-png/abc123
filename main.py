@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 定義前端傳進來的資料格式
+# 定義前端傳進來的資料格式 
 class QuizRequest(BaseModel):
     name: str
     email: str
