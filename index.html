@@ -106,18 +106,17 @@
             drawRadar(finalScores);
 
             // 送至後端取得 AI 報告
-            try {
-// 在 GitHub 的 index.html 裡面找到這段：
-                const res = await fetch('https://abc123-1jyf.onrender.com', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ category_scores: finalScores })
-                });
-                const data = await res.json();
-                document.getElementById('aiReport').innerText = data.report;
-            } catch (err) {
-                document.getElementById('aiReport').innerText = "報告生成失敗，請檢查 API 連線。";
-            }
+        try {
+            const res = await fetch('https://abc123-1jyf.onrender.com/api/submit-survey', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category_scores: finalScores })
+            });
+            const data = await res.json();
+            document.getElementById('aiReport').innerText = data.report;
+        } catch (err) {
+            document.getElementById('aiReport').innerText = "報告生成失敗，請檢查 API 連線。";
+        }
         });
 
         function drawRadar(scores) {
