@@ -107,7 +107,8 @@
 
             // 送至後端取得 AI 報告
             try {
-                const res = await fetch('/api/submit-survey', {
+// 在 GitHub 的 index.html 裡面找到這段：
+                const res = await fetch('https://你的Render專案名稱.onrender.com/api/submit-survey', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ category_scores: finalScores })
