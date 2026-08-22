@@ -107,6 +107,7 @@
 
             // 送至後端取得 AI 報告
         try {
+            // 核心修正：網址結尾必須包含 /api/submit-survey
             const res = await fetch('https://abc123-1jyf.onrender.com/api/submit-survey', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
