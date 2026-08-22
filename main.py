@@ -1,85 +1,69 @@
-import os
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import anthropic
-import resend
-from dotenv import load_dotenv
-
-load_dotenv()
+import os
+import google.generativeai as genai
 
 app = FastAPI()
 
-# 允許前端 index.html 跨域呼叫 (CORS)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 設定 Gemini API Key
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY"))
 
-# 定義前端傳進來的資料格式 
-class QuizRequest(BaseModel):
-    name: str
-    email: str
-    scores: dict  # {"sleep": 8, "stress": 6, "emotion": 7, "mind": 5, "inner": 9}
+# 分數換算等級 (根據 Excel 標準)[cite: 1]
+def get_rating(score_100):
+    if score_100 >= 95:
+        return "S"
+    elif score_100 >= 80:
+        return "A+"
+    elif score_100 >= 70:
+        return "A"
+    elif score_100 >= 60:
+        return "B"
+    else:
+        return "Room for improvement"
 
-@app.post("/api/analyze")
-async def analyze_quiz(data: QuizRequest):
-    try:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="未設定 ANTHROPIC_API_KEY")
+class SurveyData(BaseModel):
+    category_scores: dict # 接收前端 1~5 分的平均值
 
-        client = anthropic.Anthropic(api_key=api_key)
+@app.post("/api/submit-survey")
+async def process_survey(data: SurveyData):
+    scaled_scores = {}
+    ratings = {}
+    
+    # 轉換 0~100 分與等級[cite: 1]
+    for cat, avg_5 in data.category_scores.items():
+        score_100 = (avg_5 / 5.0) * 100
+        scaled_scores[cat] = round(score_100, 1)
+        ratings[cat] = get_rating(score_100)
 
-        # 1. 組合 Prompt 給 Claude
-        prompt = f"""
-        你是一位有著豐富專業知識的的資深心理分析師。請根據使用者的五維度得分（滿分 10 分）結合你的專業知識進行深度的分析與引導。
+    # 組裝 AI Prompt[cite: 1]
+    prompt = f"""
+    你是一位專屬 Ness Wellness 的身心靈健康分析顧問。請根據學員在 Wellness Wheel 測驗中的得分與評級生成一份溫暖、專業且具實用建議的報告：
 
-        使用者姓名：{data.name}
-        得分狀況：
-        - 睡眠修復：{data.scores.get('sleep', 0)}/10
-        - 壓力抗性：{data.scores.get('stress', 0)}/10
-        - 情緒覺察：{data.scores.get('emotion', 0)}/10
-        - 心智清晰：{data.scores.get('mind', 0)}/10
-        - 內在連結：{data.scores.get('inner', 0)}/10
+    【八大維度得分與評級】
+    - 社交關係 (Social): {scaled_scores.get('SOCIAL', 0)}分 (等級: {ratings.get('SOCIAL')})
+    - 身體健康 (Physical): {scaled_scores.get('PHYSICAL', 0)}分 (等級: {ratings.get('PHYSICAL')})
+    - 財務理財 (Financial): {scaled_scores.get('FINANCIAL', 0)}分 (等級: {ratings.get('FINANCIAL')})
+    - 心智成長 (Intellectual): {scaled_scores.get('INTELLECTUAL', 0)}分 (等級: {ratings.get('INTELLECTUAL')})
+    - 心靈信仰 (Spiritual): {scaled_scores.get('SPIRITUAL', 0)}分 (等級: {ratings.get('SPIRITUAL')})
+    - 職場職涯 (Occupational): {scaled_scores.get('OCCUPATIONAL', 0)}分 (等級: {ratings.get('OCCUPATIONAL')})
+    - 環境感知 (Environmental): {scaled_scores.get('ENVIRONMENTAL', 0)}分 (等級: {ratings.get('ENVIRONMENTAL')})
+    - 情緒管理 (Emotional): {scaled_scores.get('EMOTIONAL', 0)}分 (等級: {ratings.get('EMOTIONAL')})
 
-        請按以下格式提供專業、溫暖且具建設性的分析：
-        1. 【睡眠與身體修復】：分析其狀況並給予一項生活建議。
-        2. 【壓力抗性與復原力】：分析其狀況並給予一項放鬆建議。
-        3. 【情緒覺察與調節】：分析其狀況並給予情緒安撫建議。
-        4. 【心智專注與清晰度】：分析其狀況並給予專注力建議。
-        5. 【內在連結與靈性】：分析其狀況並給予內在練習建議。
-        """
+    請輸出繁體中文，並包含以下三大架構：
+    1. 🌟 **整體現況覺察**：肯定學員完成測驗，並給予整體身心靈狀態的簡要總結。
+    2. 💪 **優勢維度亮點**：點出表現優異 (S 或 A+) 的項目並給予具體鼓勵。
+    3. 🌱 **微小改變指引**：針對得分較低的領域，提供 2 個能在日常生活中輕鬆執行的改善小練習。
+    """
 
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=2500,
-            messages=[{"role": "user", "content": prompt}]
-        )
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    response = model.generate_content(prompt)
 
-        ai_comment = "".join(
-            block.text for block in response.content if getattr(block, "type", "") == "text"
-        )
-        print("=" * 50)
-        print(f"【DEBUG】Claude 回傳總字數：{len(ai_comment)}")
-        print(ai_comment)
-        print("=" * 50)
+    return {
+        "scores": scaled_scores,
+        "ratings": ratings,
+        "report": response.text
+    }
 
-        # 2. 寄送 Email (如果設定了 RESEND_API_KEY)
-        resend_key = os.getenv("RESEND_API_KEY")
-        if resend_key:
-            resend.api_key = resend_key
-            resend.Emails.send({
-                "from": "123 <onboarding@resend.dev>",
-                "to": data.email,
-                "subject": f"{data.name} 的身心靈深度檢測報告",
-                "html": f"<div style='font-family: sans-serif; line-height: 1.6;'><h3>親愛的 {data.name} 您好：</h3><p>感謝參與檢測！以下是您的個人化身心靈分析報告：</p><hr><pre style='white-space: pre-wrap;'>{ai_comment}</pre></div>"
-            })
-
-        return {"status": "success", "ai_comment": ai_comment}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# 靜態檔案掛載
+app.mount("/", StaticFiles(directory=".", html=True), name="static")
