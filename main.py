@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
-import anthropic
+import json
+import urllib.request
 
 app = FastAPI()
 
@@ -12,11 +13,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# 直接讀取 Render 後台設定的 ANTHROPIC_API_KEY
-client = anthropic.Anthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY")
 )
 
 def get_rating(score_100):
@@ -58,14 +54,32 @@ async def process_survey(data: SurveyData):
     3. 🌱 **微小改變指引**：針對較低分項目提供 2 個日常改善小練習。
     """
 
-    message = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    url = "https://api.anthropic.com/v1/messages"
+    
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    
+    payload = {
+        "model": "claude-3-5-sonnet-20240620",
+        "max_tokens": 1000,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            report_text = res_data['content'][0]['text']
+    except Exception as e:
+        report_text = f"報告生成失敗，請檢查 API 連線: {str(e)}"
 
     return {
         "scores": scaled_scores,
         "ratings": ratings,
-        "report": message.content[0].text
+        "report": report_text
     }
