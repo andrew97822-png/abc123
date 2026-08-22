@@ -6,7 +6,6 @@ import anthropic
 
 app = FastAPI()
 
-# 跨網域設定，允許 GitHub Pages 呼叫
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 初始化 Claude Client
+# 直接讀取 Render 後台設定的 ANTHROPIC_API_KEY
 client = anthropic.Anthropic(
     api_key=os.environ.get("ANTHROPIC_API_KEY")
 )
@@ -59,7 +58,6 @@ async def process_survey(data: SurveyData):
     3. 🌱 **微小改變指引**：針對較低分項目提供 2 個日常改善小練習。
     """
 
-    # 呼叫 Claude API
     message = client.messages.create(
         model="claude-3-5-sonnet-20240620",
         max_tokens=1000,
