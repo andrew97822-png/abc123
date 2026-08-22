@@ -1,13 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
-import google.generativeai as genai
+import anthropic
 
 app = FastAPI()
 
-# 必須加上 CORS，否則 GitHub Pages 呼叫會被擋掉
+# 跨網域設定，允許 GitHub Pages 呼叫
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,9 +15,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 從 Render 的環境變數安全讀取 API Key
-API_KEY = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=API_KEY)
+# 初始化 Claude Client
+client = anthropic.Anthropic(
+    api_key=os.environ.get("ANTHROPIC_API_KEY")
+)
 
 def get_rating(score_100):
     if score_100 >= 95: return "S"
@@ -59,13 +59,15 @@ async def process_survey(data: SurveyData):
     3. 🌱 **微小改變指引**：針對較低分項目提供 2 個日常改善小練習。
     """
 
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content(prompt)
+    # 呼叫 Claude API
+    message = client.messages.create(
+        model="claude-3-5-sonnet-20240620",
+        max_tokens=1000,
+        messages=[{"role": "user", "content": prompt}]
+    )
 
     return {
         "scores": scaled_scores,
         "ratings": ratings,
-        "report": response.text
+        "report": message.content[0].text
     }
-
-app.mount("/", StaticFiles(directory=".", html=True), name="static")
