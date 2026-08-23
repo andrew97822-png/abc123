@@ -41,22 +41,22 @@
 
     <script>
         const questions = [
-            { id: 1, cat: "SOCIAL", name: "社交關係", text: "我與一群支持我的朋友和家人，保有著深入的關係。" },
-            { id: 2, cat: "SOCIAL", name: "社交關係", text: "我努力成為一個“更好的人”，並積極解決在我與他人的互動以及我扮演的每個角色中產生問題的行為。" },
-            { id: 3, cat: "PHYSICAL", name: "身體健康", text: "我保持健康的飲食習慣（水果、蔬菜等）並全天飲水充足。" },
-            { id: 4, cat: "PHYSICAL", name: "身體健康", text: "我探索自己的性取向，了解自己的好惡。" },
-            { id: 5, cat: "FINANCIAL", name: "財務理財", text: "我對理財知識/技能/顧問有所涉略，並為我的將來計劃做好萬全準備。" },
-            { id: 6, cat: "FINANCIAL", name: "財務理財", text: "我每個月都能設定目標並維持預算，不至於透支財務。" },
-            { id: 7, cat: "INTELLECTUAL", name: "心智成長", text: "我對於新的想法保持開放態度。" },
-            { id: 8, cat: "INTELLECTUAL", name: "心智成長", text: "我時常透過學習新技能尋求個人成長。" },
-            { id: 9, cat: "SPIRITUAL", name: "心靈信仰", text: "我會花時間獨立思考生活中甚麼是重要的—我是誰，我重視什麼，我適合哪裡，我要往哪去。" },
-            { id: 10, cat: "SPIRITUAL", name: "心靈信仰", text: "我相信一個更大的力量（上帝、宇宙等）和一個適合的信仰體系（宗教、不可知論、無神論、精神論等）。" },
-            { id: 11, cat: "OCCUPATIONAL", name: "職場職涯", text: "我在目前的工作中感到非常有成就感。" },
-            { id: 12, cat: "OCCUPATIONAL", name: "職場職涯", text: "我在工作中感受到挑戰，且具有很大的成長空間和發展潛力。" },
-            { id: 13, cat: "ENVIRONMENTAL", name: "環境感知", text: "我有一個屬於我自己的私人空間，我在自己獨有的空間中感到舒適和安寧。" },
-            { id: 14, cat: "ENVIRONMENTAL", name: "環境感知", text: "我關心著當地、國家和全球的氣候衝擊，並致力於減少對環境的影響。" },
-            { id: 15, cat: "EMOTIONAL", name: "情緒管理", text: "我可以表達所有內心的感受（像是痛楚、悲傷、恐懼、憤怒、喜悅等）並以健康的方式自我管理情緒。" },
-            { id: 16, cat: "EMOTIONAL", name: "情緒管理", text: "我不會讓情緒控制自我，並且會先思考再行動。" }
+            { id: 1, cat: "SOCIAL", text: "我與一群支持我的朋友和家人，保有著深入的關係。" },
+            { id: 2, cat: "SOCIAL", text: "我努力成為一個“更好的人”，並積極解決在我與他人的互動以及我扮演的每個角色中產生問題的行為。" },
+            { id: 3, cat: "PHYSICAL", text: "我保持健康的飲食習慣（水果、蔬菜等）並全天飲水充足。" },
+            { id: 4, cat: "PHYSICAL", text: "我探索自己的性取向，了解自己的好惡。" },
+            { id: 5, cat: "FINANCIAL", text: "我對理財知識/技能/顧問有所涉略，並為我的將來計劃做好萬全準備。" },
+            { id: 6, cat: "FINANCIAL", text: "我每個月都能設定目標並維持預算，不至於透支財務。" },
+            { id: 7, cat: "INTELLECTUAL", text: "我對於新的想法保持開放態度。" },
+            { id: 8, cat: "INTELLECTUAL", text: "我時常透過學習新技能尋求個人成長。" },
+            { id: 9, cat: "SPIRITUAL", text: "我會花時間獨立思考生活中甚麼是重要的—我是誰，我重視什麼，我適合哪裡，我要往哪去。" },
+            { id: 10, cat: "SPIRITUAL", text: "我相信一個更大的力量（上帝、宇宙等）和一個適合的信仰體系（宗教、不可知論、無神論、精神論等）。" },
+            { id: 11, cat: "OCCUPATIONAL", text: "我在目前的工作中感到非常有成就感。" },
+            { id: 12, cat: "OCCUPATIONAL", text: "我在工作中感受到挑戰，且具有很大的成長空間和發展潛力。" },
+            { id: 13, cat: "ENVIRONMENTAL", text: "我有一個屬於我自己的私人空間，我在自己獨有的空間中感到舒適和安寧。" },
+            { id: 14, cat: "ENVIRONMENTAL", text: "我關心著當地、國家和全球的氣候衝擊，並致力於減少對環境的影響。" },
+            { id: 15, cat: "EMOTIONAL", text: "我可以表達所有內心的感受（像是痛楚、悲傷、恐懼、憤怒、喜悅等）並以健康的方式自我管理情緒。" },
+            { id: 16, cat: "EMOTIONAL", text: "我不會讓情緒控制自我，並且會先思考再行動。" }
         ];
 
         // 動態渲染題目
@@ -135,7 +135,7 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Ness Wellness 得分',
+                        label: '總得分',
                         data: dataValues,
                         backgroundColor: 'rgba(46, 125, 50, 0.2)',
                         borderColor: '#2e7d32',
