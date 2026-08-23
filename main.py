@@ -75,8 +75,11 @@ async def process_survey(data: SurveyData):
         with urllib.request.urlopen(req) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             report_text = res_data['content'][0]['text']
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        report_text = f"API 呼叫失敗 [{e.code}]: {error_body}"
     except Exception as e:
-        report_text = f"報告生成失敗，請檢查 API 連線: {str(e)}"
+        report_text = f"系統錯誤: {str(e)}"
 
     return {
         "scores": scaled_scores,
