@@ -36,7 +36,7 @@ async def process_survey(data: SurveyData):
         ratings[cat] = get_rating(score_100)
 
     prompt = f"""
-    你是一位專屬 Ness Wellness 的身心靈健康分析顧問。請根據學員在 Wellness Wheel 測驗中的得分與評級生成一份溫暖、專業且具實用建議的報告：
+    你是一位資深的身心靈健康分析顧問。請根據學員在測驗中的得分與評級生成一份專業且具實用建議的報告：
 
     【八大維度得分與評級】
     - 社交關係 (Social): {scaled_scores.get('SOCIAL', 0)}分 (等級: {ratings.get('SOCIAL')})
