@@ -54,7 +54,7 @@ async def process_survey(data: SurveyData):
     3. 🌱 **微小改變指引**：針對較低分項目提供 2 個日常改善小練習。
     """
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     
     if not api_key:
         return {"scores": scaled_scores, "ratings": ratings, "report": "錯誤：Render 環境變數找不到 ANTHROPIC_API_KEY！"}
@@ -63,7 +63,7 @@ async def process_survey(data: SurveyData):
 
     url = "https://api.anthropic.com/v1/messages"
     headers = {
-        "x-api-key": api_key.strip(),
+        "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
     }
