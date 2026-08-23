@@ -54,17 +54,22 @@ async def process_survey(data: SurveyData):
     3. 🌱 **微小改變指引**：針對較低分項目提供 2 個日常改善小練習。
     """
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    url = "https://api.anthropic.com/v1/messages"
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     
+    if not api_key:
+        return {"scores": scaled_scores, "ratings": ratings, "report": "錯誤：Render 環境變數找不到 ANTHROPIC_API_KEY！"}
+    
+    key_preview = f"{api_key[:7]}...{api_key[-4:]}" if len(api_key) > 10 else "invalid_length"
+
+    url = "https://api.anthropic.com/v1/messages"
     headers = {
-        "x-api-key": api_key,
+        "x-api-key": api_key.strip(),
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
     }
     
     payload = {
-        "model": "claude-3-5-sonnet-latest",
+        "model": "claude-3-haiku-20240307",
         "max_tokens": 1000,
         "messages": [{"role": "user", "content": prompt}]
     }
@@ -76,10 +81,10 @@ async def process_survey(data: SurveyData):
             res_data = json.loads(response.read().decode('utf-8'))
             report_text = res_data['content'][0]['text']
     except urllib.error.HTTPError as e:
-        error_body = e.read().decode('utf-8')
-        report_text = f"API 呼叫失敗 [{e.code}]: {error_body}"
+        err_detail = e.read().decode('utf-8')
+        report_text = f"【API 拒絕】HTTP {e.code} | Key: {key_preview} | 原因: {err_detail}"
     except Exception as e:
-        report_text = f"系統錯誤: {str(e)}"
+        report_text = f"【系統錯誤】{str(e)}"
 
     return {
         "scores": scaled_scores,
