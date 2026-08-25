@@ -36,7 +36,7 @@ async def process_survey(data: SurveyData):
         ratings[cat] = get_rating(score_100)
 
     prompt = f"""
-    你是一位資深的身心靈健康分析顧問。請根據學員在測驗中的得分與評級生成一份專業且具實用建議的報告：
+    你是一位專屬 Ness Wellness 的身心靈健康分析顧問。請根據學員在 Wellness Wheel 測驗中的得分與評級生成一份溫暖、專業且精鍊的報告：
 
     【八大維度得分與評級】
     - 社交關係 (Social): {scaled_scores.get('SOCIAL', 0)}分 (等級: {ratings.get('SOCIAL')})
@@ -48,12 +48,17 @@ async def process_survey(data: SurveyData):
     - 環境感知 (Environmental): {scaled_scores.get('ENVIRONMENTAL', 0)}分 (等級: {ratings.get('ENVIRONMENTAL')})
     - 情緒管理 (Emotional): {scaled_scores.get('EMOTIONAL', 0)}分 (等級: {ratings.get('EMOTIONAL')})
 
-    請輸出繁體中文，包含：
-    1. 🌟 整體現況覺察：簡要總結。
-    2. 💪 優勢維度亮點：點出高分項目(使用粗體標記)並給予鼓勵。
-    3. 🌱 微小改變指引：針對較低分項目提供 2 個日常改善小練習。
-    
-    【格式要求】嚴禁使用任何 Markdown 符號（例如: **, ## ），並且重要標題使用粗體
+    【輸出要求】
+    請使用繁體中文，並嚴格按照以下三區塊輸出（總字數控制在 350 字以內，語氣溫暖真誠、切忌過度誇大吹捧）：
+
+    ### 🌟 整體現況覺察
+    （用 2-3 句話簡要點出學員目前的整體身心靈平衡狀態。）
+
+    ### 💪 優勢維度亮點
+    （挑選得分最高的 2-3 個維度進行具體鼓勵，不要把 8 個維度全部列出來。）
+
+    ### 🌱 微小改變指引
+    （挑選得分相對較低或最需要滋養的 1-2 個維度，提供 2 個今天就能開始實踐的具體微小練習。）
     """
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
