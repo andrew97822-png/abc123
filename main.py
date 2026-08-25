@@ -49,9 +49,11 @@ async def process_survey(data: SurveyData):
     - 情緒管理 (Emotional): {scaled_scores.get('EMOTIONAL', 0)}分 (等級: {ratings.get('EMOTIONAL')})
 
     請輸出繁體中文，包含：
-    1. 🌟 **整體現況覺察**：簡要總結。
-    2. 💪 **優勢維度亮點**：點出高分項目並給予鼓勵。
-    3. 🌱 **微小改變指引**：針對較低分項目提供 2 個日常改善小練習。
+    1. 🌟 整體現況覺察：簡要總結。
+    2. 💪 優勢維度亮點：點出高分項目並給予鼓勵。
+    3. 🌱 微小改變指引：針對較低分項目提供 2 個日常改善小練習。
+    
+    【格式要求】嚴禁使用任何 Markdown 符號，重要標題使用粗體
     """
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
