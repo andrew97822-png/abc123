@@ -64,7 +64,7 @@
         questions.forEach((q, idx) => {
             container.innerHTML += `
                 <div class="q-group">
-                    <div class="q-title">${idx + 1}. [${q.cat}] ${q.text}</div>
+                    <div class="q-title">${idx + 1}. ${q.text}</div>
                     <div class="options">
                         ${[1, 2, 3, 4, 5].map(v => `
                             <label>
