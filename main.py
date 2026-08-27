@@ -4,9 +4,10 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import json
-import csv
 import urllib.request
 from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
 app = FastAPI()
 
@@ -18,6 +19,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 🔑 請在下面替換成你的 Google Sheet ID (網址中 /d/ 與 /edit 中間的那串字串)
+SPREADSHEET_ID = "1zEAssGnfDwk5tZtZ-9KQSZEWwWfdAyXoq9epyltqnCg"
+
+def save_to_google_sheets(email: str, scores: dict):
+    """將學員 Email 與分數自動寫入 Google Sheets"""
+    try:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
+        # 讀取 Render 環境變數中的 Google Credentials JSON
+        google_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+        if google_json_str:
+            creds_dict = json.loads(google_json_str)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        else:
+            # 本地測試時備用：如果找不到環境變數，讀取本地 json
+            creds = Credentials.from_service_account_file("google_key.json", scopes=scopes)
+
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+
+        # 整理要寫入試算表的一列資料
+        row_data = [
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            email or "未提供",
+            scores.get("SOCIAL", 0),
+            scores.get("PHYSICAL", 0),
+            scores.get("FINANCIAL", 0),
+            scores.get("INTELLECTUAL", 0),
+            scores.get("SPIRITUAL", 0),
+            scores.get("OCCUPATIONAL", 0),
+            scores.get("ENVIRONMENTAL", 0),
+            scores.get("EMOTIONAL", 0)
+        ]
+        
+        # 追加到試算表最新一行
+        sheet.append_row(row_data)
+        print(f"✅ 已成功將 {email} 的資料寫入 Google Sheets！")
+    except Exception as e:
+        print(f"⚠️ 寫入 Google Sheets 失敗: {e}")
+
 def get_rating(score_100):
     if score_100 >= 95: return "S"
     elif score_100 >= 80: return "A+"
@@ -25,24 +69,12 @@ def get_rating(score_100):
     elif score_100 >= 60: return "B"
     else: return "Room for improvement"
 
-# 1. 擴充資料模型：新增可選的 email 欄位
 class SurveyData(BaseModel):
     email: Optional[str] = None
     category_scores: dict
 
 @app.post("/api/submit-survey")
 async def process_survey(data: SurveyData):
-    # 2. 收集與記錄 Email
-    if data.email:
-        print(f"✅ 收到新填寫者 Email: {data.email}")
-        try:
-            # 自動寫入/追加到 user_emails.csv 檔案中
-            with open("user_emails.csv", mode="a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data.email])
-        except Exception as e:
-            print(f"⚠️ CSV 寫入失敗: {e}")
-
     scaled_scores = {}
     ratings = {}
     
@@ -51,6 +83,10 @@ async def process_survey(data: SurveyData):
         scaled_scores[cat] = round(score_100, 1)
         ratings[cat] = get_rating(score_100)
 
+    # 1. 自動同步學員資料到 Google Sheets
+    save_to_google_sheets(data.email, scaled_scores)
+
+    # 2. 構建 Claude prompt
     prompt = f"""
     你是一位專屬 Ness Wellness 的身心靈健康分析顧問。請根據學員在 Wellness Wheel 測驗中的得分與評級生成一份溫暖、專業且精鍊的報告：
 
@@ -81,8 +117,6 @@ async def process_survey(data: SurveyData):
     
     if not api_key:
         return {"scores": scaled_scores, "ratings": ratings, "report": "錯誤：Render 環境變數找不到 ANTHROPIC_API_KEY！"}
-    
-    key_preview = f"{api_key[:7]}...{api_key[-4:]}" if len(api_key) > 10 else "invalid_length"
 
     url = "https://api.anthropic.com/v1/messages"
     headers = {
@@ -105,7 +139,7 @@ async def process_survey(data: SurveyData):
             report_text = res_data['content'][0]['text']
     except urllib.error.HTTPError as e:
         err_detail = e.read().decode('utf-8')
-        report_text = f"【API 拒絕】HTTP {e.code} | Key: {key_preview} | 原因: {err_detail}"
+        report_text = f"【API 拒絕】HTTP {e.code} | 原因: {err_detail}"
     except Exception as e:
         report_text = f"【系統錯誤】{str(e)}"
 
