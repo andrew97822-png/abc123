@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 import os
 import json
+import csv
 import urllib.request
+from datetime import datetime
 
 app = FastAPI()
 
@@ -22,11 +25,24 @@ def get_rating(score_100):
     elif score_100 >= 60: return "B"
     else: return "Room for improvement"
 
+# 1. 擴充資料模型：新增可選的 email 欄位
 class SurveyData(BaseModel):
+    email: Optional[str] = None
     category_scores: dict
 
 @app.post("/api/submit-survey")
 async def process_survey(data: SurveyData):
+    # 2. 收集與記錄 Email
+    if data.email:
+        print(f"✅ 收到新填寫者 Email: {data.email}")
+        try:
+            # 自動寫入/追加到 user_emails.csv 檔案中
+            with open("user_emails.csv", mode="a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data.email])
+        except Exception as e:
+            print(f"⚠️ CSV 寫入失敗: {e}")
+
     scaled_scores = {}
     ratings = {}
     
@@ -51,13 +67,13 @@ async def process_survey(data: SurveyData):
     【輸出要求】
     請使用繁體中文，並嚴格按照以下三區塊輸出（語氣溫暖真誠、切忌過度誇大吹捧）：
 
-    🌟 整體現況覺察(粗體字)
+    ### 🌟 **整體現況覺察**
     （用 2-3 句話簡要點出學員目前的整體身心靈平衡狀態。）
 
-    💪 優勢維度亮點(粗體字)
+    ### 💪 **優勢維度亮點**
     （挑選得分最高的 2-3 個維度進行具體鼓勵，不要把 8 個維度全部列出來。）
 
-    🌱 微小改變指引(粗體字)
+    ### 🌱 **微小改變指引**
     （挑選得分相對較低或最需要滋養的 1-2 個維度，提供 2 個今天就能開始實踐的具體微小練習。）
     """
 
