@@ -4,11 +4,10 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import json
-import time
-import base64
-import urllib.request
-import urllib.parse
+import requests
 from datetime import datetime
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request
 
 app = FastAPI()
 
@@ -23,105 +22,29 @@ app.add_middleware(
 # 🔑 請替換成你的 Google Sheet ID (網址 /d/ 與 /edit 中間那一串)
 SPREADSHEET_ID = "1zEAssGnfDwk5tZtZ-9KQSZEWwWfdAyXoq9epyltqnCg"
 
-def base64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
-
-def get_google_access_token(creds_dict: dict) -> str:
-    """使用純 Python 內建庫 (urllib + struct/math) 解析 RSA 私鑰並取得 Google OAuth Token"""
-    try:
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding
-        from cryptography.hazmat.primitives.serialization import load_pem_private_key
-        has_crypto = True
-    except ImportError:
-        has_crypto = False
-
-    now = int(time.time())
-    header = {"alg": "RS256", "typ": "JWT"}
-    claim_set = {
-        "iss": creds_dict["client_email"],
-        "scope": "https://www.googleapis.com/auth/spreadsheets",
-        "aud": "https://oauth2.googleapis.com/token",
-        "exp": now + 3600,
-        "iat": now
-    }
-    
-    encoded_header = base64url_encode(json.dumps(header).encode('utf-8'))
-    encoded_claim = base64url_encode(json.dumps(claim_set).encode('utf-8'))
-    signing_input = f"{encoded_header}.{encoded_claim}".encode('utf-8')
-
-    private_key_pem = creds_dict["private_key"].encode('utf-8')
-
-    if has_crypto:
-        key = load_pem_private_key(private_key_pem, password=None)
-        signature = key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
-    else:
-        # 備用純 Python PKCS1v15 簽署
-        import re
-        pem_body = re.sub(r'-----.*?-----|\s', '', creds_dict["private_key"])
-        key_bytes = base64.b64decode(pem_body)
-        
-        # 簡易解析 DER 格式 RSA 私鑰中的 n 與 d
-        def parse_der_integers(der):
-            idx = 2  # skip sequence header
-            ints = []
-            while idx < len(der):
-                if der[idx] == 0x02:  # INTEGER
-                    length = der[idx+1]
-                    idx_start = idx + 2
-                    if length & 0x80:
-                        num_bytes = length & 0x7f
-                        length = int.from_bytes(der[idx_start:idx_start+num_bytes], 'big')
-                        idx_start += num_bytes
-                    val = int.from_bytes(der[idx_start:idx_start+length], 'big')
-                    ints.append(val)
-                    idx = idx_start + length
-                else:
-                    idx += 1
-            return ints
-
-        ints = parse_der_integers(key_bytes)
-        n, d = ints[1], ints[3]
-
-        # SHA256 DigestInfo Prefix
-        sha256_prefix = bytes.fromhex("3031300d060960864801650304020105000420")
-        import hashlib
-        hashed = hashlib.sha256(signing_input).digest()
-        t = sha256_prefix + hashed
-        
-        k = (n.bit_length() + 7) // 8
-        ps = b'\xff' * (k - len(t) - 3)
-        em = b'\x00\x01' + ps + b'\x00' + t
-        em_int = int.from_bytes(em, 'big')
-        sig_int = pow(em_int, d, n)
-        signature = sig_int.to_bytes(k, 'big')
-
-    jwt_token = f"{encoded_header}.{encoded_claim}.{base64url_encode(signature)}"
-
-    # 發送請求取得 Access Token
-    token_url = "https://oauth2.googleapis.com/token"
-    data = urllib.parse.urlencode({
-        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        "assertion": jwt_token
-    }).encode('utf-8')
-
-    req = urllib.request.Request(token_url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(req) as resp:
-        res = json.loads(resp.read().decode('utf-8'))
-        return res["access_token"]
-
 def save_to_google_sheets(email: str, scores: dict):
-    """使用原生 Google Sheets REST API 寫入資料（無額外第三方套件）"""
+    """使用 google-auth 取得官方 Access Token 並寫入 Google Sheets"""
     try:
-        google_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+        google_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
         if not google_json_str:
             print("⚠️ 找不到 GOOGLE_CREDENTIALS_JSON 環境變數")
             return
 
+        # 解析環境變數中的 JSON 金鑰
         creds_dict = json.loads(google_json_str)
-        access_token = get_google_access_token(creds_dict)
+        
+        # 修正 JSON 內 private_key 的換行字元格式
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-        # 寫入列的內容
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        
+        # 刷新取得 Access Token
+        credentials.refresh(Request())
+        access_token = credentials.token
+
+        # 整理要寫入試算表的一列資料
         row_data = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             email or "未提供",
@@ -136,19 +59,21 @@ def save_to_google_sheets(email: str, scores: dict):
         ]
 
         url = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED"
-        payload = {
-            "values": [row_data]
-        }
+        payload = {"values": [row_data]}
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
 
-        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method="POST")
-        with urllib.request.urlopen(req) as resp:
+        response = requests.post(url, json=payload, headers=headers)
+        
+        if response.status_code == 200:
             print(f"✅ 已成功將 {email} 的資料寫入 Google Sheets！")
+        else:
+            print(f"⚠️ 寫入 Google Sheets 失敗 [HTTP {response.status_code}]: {response.text}")
+
     except Exception as e:
-        print(f"⚠️ 寫入 Google Sheets 失敗: {e}")
+        print(f"⚠️ 寫入 Google Sheets 發生例外錯誤: {e}")
 
 def get_rating(score_100):
     if score_100 >= 95: return "S"
@@ -171,7 +96,7 @@ async def process_survey(data: SurveyData):
         scaled_scores[cat] = round(score_100, 1)
         ratings[cat] = get_rating(score_100)
 
-    # 1. 自動同步資料至 Google Sheets
+    # 1. 自動同步學員資料至 Google Sheets
     save_to_google_sheets(data.email, scaled_scores)
 
     # 2. 構建 Claude prompt
@@ -219,15 +144,13 @@ async def process_survey(data: SurveyData):
         "messages": [{"role": "user", "content": prompt}]
     }
     
-    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
-    
     try:
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
+        res = requests.post(url, json=payload, headers=headers)
+        if res.status_code == 200:
+            res_data = res.json()
             report_text = res_data['content'][0]['text']
-    except urllib.error.HTTPError as e:
-        err_detail = e.read().decode('utf-8')
-        report_text = f"【API 拒絕】HTTP {e.code} | 原因: {err_detail}"
+        else:
+            report_text = f"【API 拒絕】HTTP {res.status_code} | 原因: {res.text}"
     except Exception as e:
         report_text = f"【系統錯誤】{str(e)}"
 
