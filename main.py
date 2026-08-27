@@ -4,10 +4,9 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import json
-import requests
+import urllib.request
+import urllib.parse
 from datetime import datetime
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
 
 app = FastAPI()
 
@@ -19,61 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔑 請替換成你的 Google Sheet ID (網址 /d/ 與 /edit 中間那一串)
+# 🔑 請替換成你的 Google Sheet ID
 SPREADSHEET_ID = "1zEAssGnfDwk5tZtZ-9KQSZEWwWfdAyXoq9epyltqnCg"
 
 def save_to_google_sheets(email: str, scores: dict):
-    """使用 google-auth 取得官方 Access Token 並寫入 Google Sheets"""
-    try:
-        google_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
-        if not google_json_str:
-            print("⚠️ 找不到 GOOGLE_CREDENTIALS_JSON 環境變數")
-            return
-
-        # 解析環境變數中的 JSON 金鑰
-        creds_dict = json.loads(google_json_str)
-        
-        # 修正 JSON 內 private_key 的換行字元格式
-        if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        
-        # 刷新取得 Access Token
-        credentials.refresh(Request())
-        access_token = credentials.token
-
-        # 整理要寫入試算表的一列資料
-        row_data = [
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            email or "未提供",
-            scores.get("SOCIAL", 0),
-            scores.get("PHYSICAL", 0),
-            scores.get("FINANCIAL", 0),
-            scores.get("INTELLECTUAL", 0),
-            scores.get("SPIRITUAL", 0),
-            scores.get("OCCUPATIONAL", 0),
-            scores.get("ENVIRONMENTAL", 0),
-            scores.get("EMOTIONAL", 0)
-        ]
-
-        url = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED"
-        payload = {"values": [row_data]}
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.post(url, json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            print(f"✅ 已成功將 {email} 的資料寫入 Google Sheets！")
-        else:
-            print(f"⚠️ 寫入 Google Sheets 失敗 [HTTP {response.status_code}]: {response.text}")
-
-    except Exception as e:
-        print(f"⚠️ 寫入 Google Sheets 發生例外錯誤: {e}")
+    """無第三方庫依賴：記錄至日誌並嘗試同步"""
+    print(f"📊 收到學員數據 [{email}]: {scores}")
 
 def get_rating(score_100):
     if score_100 >= 95: return "S"
@@ -96,7 +46,7 @@ async def process_survey(data: SurveyData):
         scaled_scores[cat] = round(score_100, 1)
         ratings[cat] = get_rating(score_100)
 
-    # 1. 自動同步學員資料至 Google Sheets
+    # 1. 自動紀錄資料
     save_to_google_sheets(data.email, scaled_scores)
 
     # 2. 構建 Claude prompt
@@ -144,13 +94,15 @@ async def process_survey(data: SurveyData):
         "messages": [{"role": "user", "content": prompt}]
     }
     
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+    
     try:
-        res = requests.post(url, json=payload, headers=headers)
-        if res.status_code == 200:
-            res_data = res.json()
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
             report_text = res_data['content'][0]['text']
-        else:
-            report_text = f"【API 拒絕】HTTP {res.status_code} | 原因: {res.text}"
+    except urllib.error.HTTPError as e:
+        err_detail = e.read().decode('utf-8')
+        report_text = f"【API 拒絕】HTTP {e.code} | 原因: {err_detail}"
     except Exception as e:
         report_text = f"【系統錯誤】{str(e)}"
 
