@@ -4,10 +4,11 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import json
+import time
+import base64
 import urllib.request
+import urllib.parse
 from datetime import datetime
-import gspread
-from google.oauth2.service_account import Credentials
 
 app = FastAPI()
 
@@ -19,30 +20,108 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔑 請在下面替換成你的 Google Sheet ID (網址中 /d/ 與 /edit 中間的那串字串)
+# 🔑 請替換成你的 Google Sheet ID (網址 /d/ 與 /edit 中間那一串)
 SPREADSHEET_ID = "1zEAssGnfDwk5tZtZ-9KQSZEWwWfdAyXoq9epyltqnCg"
 
-def save_to_google_sheets(email: str, scores: dict):
-    """將學員 Email 與分數自動寫入 Google Sheets"""
+def base64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
+
+def get_google_access_token(creds_dict: dict) -> str:
+    """使用純 Python 內建庫 (urllib + struct/math) 解析 RSA 私鑰並取得 Google OAuth Token"""
     try:
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+        has_crypto = True
+    except ImportError:
+        has_crypto = False
+
+    now = int(time.time())
+    header = {"alg": "RS256", "typ": "JWT"}
+    claim_set = {
+        "iss": creds_dict["client_email"],
+        "scope": "https://www.googleapis.com/auth/spreadsheets",
+        "aud": "https://oauth2.googleapis.com/token",
+        "exp": now + 3600,
+        "iat": now
+    }
+    
+    encoded_header = base64url_encode(json.dumps(header).encode('utf-8'))
+    encoded_claim = base64url_encode(json.dumps(claim_set).encode('utf-8'))
+    signing_input = f"{encoded_header}.{encoded_claim}".encode('utf-8')
+
+    private_key_pem = creds_dict["private_key"].encode('utf-8')
+
+    if has_crypto:
+        key = load_pem_private_key(private_key_pem, password=None)
+        signature = key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    else:
+        # 備用純 Python PKCS1v15 簽署
+        import re
+        pem_body = re.sub(r'-----.*?-----|\s', '', creds_dict["private_key"])
+        key_bytes = base64.b64decode(pem_body)
         
-        # 讀取 Render 環境變數中的 Google Credentials JSON
+        # 簡易解析 DER 格式 RSA 私鑰中的 n 與 d
+        def parse_der_integers(der):
+            idx = 2  # skip sequence header
+            ints = []
+            while idx < len(der):
+                if der[idx] == 0x02:  # INTEGER
+                    length = der[idx+1]
+                    idx_start = idx + 2
+                    if length & 0x80:
+                        num_bytes = length & 0x7f
+                        length = int.from_bytes(der[idx_start:idx_start+num_bytes], 'big')
+                        idx_start += num_bytes
+                    val = int.from_bytes(der[idx_start:idx_start+length], 'big')
+                    ints.append(val)
+                    idx = idx_start + length
+                else:
+                    idx += 1
+            return ints
+
+        ints = parse_der_integers(key_bytes)
+        n, d = ints[1], ints[3]
+
+        # SHA256 DigestInfo Prefix
+        sha256_prefix = bytes.fromhex("3031300d060960864801650304020105000420")
+        import hashlib
+        hashed = hashlib.sha256(signing_input).digest()
+        t = sha256_prefix + hashed
+        
+        k = (n.bit_length() + 7) // 8
+        ps = b'\xff' * (k - len(t) - 3)
+        em = b'\x00\x01' + ps + b'\x00' + t
+        em_int = int.from_bytes(em, 'big')
+        sig_int = pow(em_int, d, n)
+        signature = sig_int.to_bytes(k, 'big')
+
+    jwt_token = f"{encoded_header}.{encoded_claim}.{base64url_encode(signature)}"
+
+    # 發送請求取得 Access Token
+    token_url = "https://oauth2.googleapis.com/token"
+    data = urllib.parse.urlencode({
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": jwt_token
+    }).encode('utf-8')
+
+    req = urllib.request.Request(token_url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req) as resp:
+        res = json.loads(resp.read().decode('utf-8'))
+        return res["access_token"]
+
+def save_to_google_sheets(email: str, scores: dict):
+    """使用原生 Google Sheets REST API 寫入資料（無額外第三方套件）"""
+    try:
         google_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
-        if google_json_str:
-            creds_dict = json.loads(google_json_str)
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        else:
-            # 本地測試時備用：如果找不到環境變數，讀取本地 json
-            creds = Credentials.from_service_account_file("google_key.json", scopes=scopes)
+        if not google_json_str:
+            print("⚠️ 找不到 GOOGLE_CREDENTIALS_JSON 環境變數")
+            return
 
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+        creds_dict = json.loads(google_json_str)
+        access_token = get_google_access_token(creds_dict)
 
-        # 整理要寫入試算表的一列資料
+        # 寫入列的內容
         row_data = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             email or "未提供",
@@ -55,10 +134,19 @@ def save_to_google_sheets(email: str, scores: dict):
             scores.get("ENVIRONMENTAL", 0),
             scores.get("EMOTIONAL", 0)
         ]
-        
-        # 追加到試算表最新一行
-        sheet.append_row(row_data)
-        print(f"✅ 已成功將 {email} 的資料寫入 Google Sheets！")
+
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED"
+        payload = {
+            "values": [row_data]
+        }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            print(f"✅ 已成功將 {email} 的資料寫入 Google Sheets！")
     except Exception as e:
         print(f"⚠️ 寫入 Google Sheets 失敗: {e}")
 
@@ -83,7 +171,7 @@ async def process_survey(data: SurveyData):
         scaled_scores[cat] = round(score_100, 1)
         ratings[cat] = get_rating(score_100)
 
-    # 1. 自動同步學員資料到 Google Sheets
+    # 1. 自動同步資料至 Google Sheets
     save_to_google_sheets(data.email, scaled_scores)
 
     # 2. 構建 Claude prompt
