@@ -9,11 +9,23 @@ from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
+# 🆕 1. 引入 Slowapi 防刷套件
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# 🆕 2. 初始化 Limiter (依 IP 辨識)
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="Ness Wellness Wheel API",
     description="身心靈八大維度測驗分析與 Google Sheets 同步後端服務",
     version="2.0.0"
 )
+
+# 🆕 3. 註冊防刷限制處理器
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,7 +34,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # 🔑 Google Sheet 配置
 SPREADSHEET_ID = "1zEAssGnfDwk5tZtZ-9KQSZEWwWfdAyXoq9epyltqnCg"
 
@@ -104,7 +115,8 @@ def read_root():
     }
 
 @app.post("/api/submit-survey")
-async def process_survey(data: DirectScoreInput):
+@limiter.limit("1/hour")  # 🆕 加在函數正上方
+async def process_survey(request: Request, data: DirectScoreInput):  # 🆕 括號內一定要加上 request: Request
     """
     主要端點：接收前端計算好的 5 分制維度分數或原始分數，寫入 Google Sheet 並調用 Claude API 生成諮詢報告
     """
