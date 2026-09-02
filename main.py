@@ -149,7 +149,7 @@ def read_root():
     }
 
 @app.post("/api/submit-survey")
-@limiter.limit("1000/hour")  # 防刷機制
+@limiter.limit("1/day")  # 防刷機制
 async def process_survey(request: Request, data: DirectScoreInput):
     """
     主要端點：接收前端 5 分制維度分數，寫入/覆蓋 Google Sheet 並調用 Claude API 生成諮詢報告
